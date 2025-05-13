@@ -1,2 +1,2 @@
-# tenant-management-service
-Service for managing tenants with gRPC, PostgreSQL, and Kafka/RabbitMQ integration.
+# Teresa Tenant Management Service
+Core service responsible for managing tenant lifecycle operations in a multi-tenant VMware environment. Provides APIs for creating, updating, deleting, and retrieving tenant information. Communicates with other internal services through gRPC and interacts with the PostgreSQL Tenant Registry and Kafka/RabbitMQ for persistent storage and event-driven messaging. Fully instrumented for observability.
