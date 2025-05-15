@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package tenant.v1;
+
+option go_package = "github.com/teresa-solution/tenant-management-service/proto/gen;tenantpb";
+
+service TenantService {
+  rpc CreateTenant (CreateTenantRequest) returns (CreateTenantResponse) {}
+  rpc GetTenant (GetTenantRequest) returns (GetTenantResponse) {}
+  rpc UpdateTenant (UpdateTenantRequest) returns (UpdateTenantResponse) {}
+  rpc DeleteTenant (DeleteTenantRequest) returns (DeleteTenantResponse) {}
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string subdomain = 3;
+  string status = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string deleted_at = 7;
+}
+
+message CreateTenantRequest {
+  string name = 1;
+  string subdomain = 2;
+  string contact_email = 3;
+  string tier = 4;
+}
+
+message CreateTenantResponse {
+  Tenant tenant = 1;
+}
+
+message GetTenantRequest {
+  string id = 1;
+}
+
+message GetTenantResponse {
+  Tenant tenant = 1;
+}
+
+message UpdateTenantRequest {
+  string id = 1;
+  string name = 2;
+  string subdomain = 3;
+  string status = 4;
+}
+
+message UpdateTenantResponse {
+  Tenant tenant = 1;
+}
+
+message DeleteTenantRequest {
+  string id = 1;
+}
+
+message DeleteTenantResponse {
+  bool success = 1;
+}
