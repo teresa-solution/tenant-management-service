@@ -11,19 +11,36 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/teresa-solution/tenant-management-service/internal/store"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	// Konfigurasi logging
+	// Configure logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	// Parse flag command line
+	// Parse command line flags
 	var (
-		port = flag.Int("port", 50051, "Port gRPC server")
+		port   = flag.Int("port", 50051, "Port gRPC server")
+		dbHost = flag.String("db-host", "localhost", "Database host")
+		dbPort = flag.Int("db-port", 5432, "Database port")
+		dbUser = flag.String("db-user", "admin", "Database user")
+		dbPass = flag.String("db-pass", "securepassword", "Database password")
+		dbName = flag.String("db-name", "tenant_registry", "Database name")
 	)
 	flag.Parse()
+
+	// Construct DSN
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		*dbHost, *dbPort, *dbUser, *dbPass, *dbName)
+
+	// Initialize database repository
+	repo, err := store.NewTenantRepository(dsn)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	defer repo.Close()
 
 	log.Info().Msgf("Starting Tenant Management Service on port %d", *port)
 
@@ -35,7 +52,7 @@ func main() {
 
 	server := grpc.NewServer()
 
-	// Daftarkan service gRPC (akan diimplementasikan nanti)
+	// Register service gRPC (will be implemented later)
 	// pb.RegisterTenantServiceServer(server, &service.TenantServiceServer{})
 
 	// Start server in goroutine
