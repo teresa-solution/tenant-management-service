@@ -9,21 +9,21 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp" // Add this import
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/teresa-solution/tenant-management-service/internal/monitoring" // Add this import
 	"github.com/teresa-solution/tenant-management-service/internal/service"
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 	tenantpb "github.com/teresa-solution/tenant-management-service/proto/gen"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection" // Add this import
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
-	// Configure logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	// Parse command line flags
 	var (
 		port   = flag.Int("port", 50051, "Port gRPC server")
 		dbHost = flag.String("db-host", "localhost", "Database host")
@@ -34,23 +34,22 @@ func main() {
 	)
 	flag.Parse()
 
-	// Construct DSN
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		*dbHost, *dbPort, *dbUser, *dbPass, *dbName)
 
-	// Initialize database repository
 	repo, err := store.NewTenantRepository(dsn)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer repo.Close()
 
-	// Initialize tenant service
 	tenantService := service.NewTenantService(repo)
+
+	// Initialize metrics
+	monitoring.InitMetrics()
 
 	log.Info().Msgf("Starting Tenant Management Service on port %d", *port)
 
-	// Setup gRPC server
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to listen")
@@ -58,9 +57,8 @@ func main() {
 
 	server := grpc.NewServer()
 	tenantpb.RegisterTenantServiceServer(server, tenantService)
-	reflection.Register(server) // Add this line to enable reflection
+	reflection.Register(server)
 
-	// Start server in goroutine
 	go func() {
 		log.Info().Msgf("gRPC server listening at %v", lis.Addr())
 		if err := server.Serve(lis); err != nil {
@@ -68,26 +66,26 @@ func main() {
 		}
 	}()
 
-	// Setup HTTP server for health checks and metrics
+	// Update HTTP server to include /metrics endpoint
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
+		mux.Handle("/metrics", promhttp.Handler()) // Add metrics endpoint
 
 		httpServer := &http.Server{
 			Addr:    ":8081",
 			Handler: mux,
 		}
 
-		log.Info().Msg("HTTP server for health checks started on port 8081")
+		log.Info().Msg("HTTP server for health checks and metrics started on port 8081")
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error().Err(err).Msg("HTTP server error")
 		}
 	}()
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
