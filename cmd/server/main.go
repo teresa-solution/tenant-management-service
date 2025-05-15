@@ -11,8 +11,11 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/teresa-solution/tenant-management-service/internal/service"
 	"github.com/teresa-solution/tenant-management-service/internal/store"
+	tenantpb "github.com/teresa-solution/tenant-management-service/proto/gen"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection" // Add this import
 )
 
 func main() {
@@ -42,6 +45,9 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Initialize tenant service
+	tenantService := service.NewTenantService(repo)
+
 	log.Info().Msgf("Starting Tenant Management Service on port %d", *port)
 
 	// Setup gRPC server
@@ -51,9 +57,8 @@ func main() {
 	}
 
 	server := grpc.NewServer()
-
-	// Register service gRPC (will be implemented later)
-	// pb.RegisterTenantServiceServer(server, &service.TenantServiceServer{})
+	tenantpb.RegisterTenantServiceServer(server, tenantService)
+	reflection.Register(server) // Add this line to enable reflection
 
 	// Start server in goroutine
 	go func() {
