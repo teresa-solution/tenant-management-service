@@ -13,7 +13,7 @@ import (
 // ProvisioningService handles tenant provisioning workflows
 type ProvisioningService struct {
 	repo         *store.TenantRepository
-	provisioning chan *model.Tenant // Channel for background provisioning
+	provisioning chan *model.Tenant
 }
 
 // NewProvisioningService creates a new ProvisioningService
@@ -29,9 +29,15 @@ func NewProvisioningService(repo *store.TenantRepository) *ProvisioningService {
 // startProvisioningWorker runs the background job for provisioning
 func (ps *ProvisioningService) startProvisioningWorker() {
 	for tenant := range ps.provisioning {
-		log.Info().Str("tenant_id", tenant.ID.String()).Msg("Starting provisioning process")
+		log.Info().
+			Str("tenant_id", tenant.ID.String()).
+			Str("subdomain", tenant.Subdomain).
+			Msg("Starting provisioning process")
 		if err := ps.provisionTenant(tenant); err != nil {
-			log.Error().Err(err).Str("tenant_id", tenant.ID.String()).Msg("Provisioning failed")
+			log.Error().
+				Str("tenant_id", tenant.ID.String()).
+				Err(err).
+				Msg("Provisioning failed")
 		}
 	}
 }
@@ -45,6 +51,15 @@ func (ps *ProvisioningService) provisionTenant(tenant *model.Tenant) error {
 		Str("tenant_id", tenant.ID.String()).
 		Str("subdomain", tenant.Subdomain).
 		Msg("Starting provisioning process")
+
+	// Create tenant schema
+	if err := ps.repo.CreateTenantSchema(ctx, tenant.ID, tenant.Subdomain); err != nil {
+		log.Error().
+			Str("tenant_id", tenant.ID.String()).
+			Err(err).
+			Msg("Failed to create tenant schema")
+		return err
+	}
 
 	if err := ps.repo.CreateProvisioningLog(ctx, tenant.ID, "init", "pending", nil); err != nil {
 		log.Error().
@@ -99,7 +114,6 @@ func (ps *ProvisioningService) provisionTenant(tenant *model.Tenant) error {
 		})
 	}
 
-	// Use the exported metrics from the monitoring package
 	monitoring.TenantsProvisioned.WithLabelValues(provisioningStatus).Inc()
 	duration := time.Since(startTime).Seconds()
 	monitoring.ProvisioningDuration.Observe(duration)
