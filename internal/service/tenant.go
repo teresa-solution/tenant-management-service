@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+	"github.com/teresa-solution/tenant-management-service/internal/crypto"
 	"github.com/teresa-solution/tenant-management-service/internal/model"
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 	tenantpb "github.com/teresa-solution/tenant-management-service/proto/gen"
@@ -56,10 +57,20 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 		return nil, status.Error(codes.AlreadyExists, "Subdomain already exists")
 	}
 
+	// Encrypt the contact email
+	encryptedEmail, emailIV, err := crypto.Encrypt(req.ContactEmail)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to encrypt contact email")
+		return nil, status.Error(codes.Internal, "Failed to encrypt contact email")
+	}
+
 	tenant := &model.Tenant{
-		Name:      req.Name,
-		Subdomain: subdomain,
-		Status:    "provisioning",
+		Name:           req.Name,
+		Subdomain:      subdomain,
+		ContactEmail:   req.ContactEmail, // Transient, not stored in DB
+		EncryptedEmail: encryptedEmail,
+		EmailIV:        emailIV,
+		Status:         "provisioning",
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
 		log.Error().Err(err).Msg("Failed to create tenant")
@@ -81,20 +92,29 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 	return &tenantpb.CreateTenantResponse{Tenant: respTenant}, nil
 }
 
-// GetTenant retrieves a tenant by ID
 func (s *TenantService) GetTenant(ctx context.Context, req *tenantpb.GetTenantRequest) (*tenantpb.GetTenantResponse, error) {
-	id, err := uuid.Parse(req.Id)
+	tenantID, err := uuid.Parse(req.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Invalid tenant ID")
 	}
 
-	tenant, err := s.repo.GetByID(ctx, id)
+	tenant, err := s.repo.GetByID(ctx, tenantID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get tenant")
+		log.Error().Err(err).Str("tenant_id", req.Id).Msg("Failed to fetch tenant")
 		return nil, status.Error(codes.Internal, "Internal server error")
 	}
-	if tenant == nil {
+	if tenant == nil || tenant.DeletedAt != nil {
 		return nil, status.Error(codes.NotFound, "Tenant not found")
+	}
+
+	// Decrypt the contact email
+	if len(tenant.EncryptedEmail) > 0 && len(tenant.EmailIV) > 0 {
+		contactEmail, err := crypto.Decrypt(tenant.EncryptedEmail, tenant.EmailIV)
+		if err != nil {
+			log.Error().Err(err).Str("tenant_id", req.Id).Msg("Failed to decrypt contact email")
+			return nil, status.Error(codes.Internal, "Failed to decrypt contact email")
+		}
+		tenant.ContactEmail = contactEmail
 	}
 
 	respTenant := &tenantpb.Tenant{
@@ -102,14 +122,8 @@ func (s *TenantService) GetTenant(ctx context.Context, req *tenantpb.GetTenantRe
 		Name:      tenant.Name,
 		Subdomain: tenant.Subdomain,
 		Status:    tenant.Status,
-		CreatedAt: tenant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: tenant.UpdatedAt.Format(time.RFC3339),
-		DeletedAt: func() string {
-			if tenant.DeletedAt != nil {
-				return tenant.DeletedAt.Format(time.RFC3339)
-			}
-			return ""
-		}(),
+		CreatedAt: tenant.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: tenant.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	return &tenantpb.GetTenantResponse{Tenant: respTenant}, nil
 }
