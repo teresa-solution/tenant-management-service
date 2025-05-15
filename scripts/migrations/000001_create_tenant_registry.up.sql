@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     name VARCHAR(100) NOT NULL,
     subdomain VARCHAR(63) NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL CHECK (status IN ('active', 'inactive', 'provisioning', 'error')),
+    provisioned BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     deleted_at TIMESTAMP WITH TIME ZONE,

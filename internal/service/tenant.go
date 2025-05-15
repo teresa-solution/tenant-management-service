@@ -13,6 +13,7 @@ import (
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 	tenantpb "github.com/teresa-solution/tenant-management-service/proto/gen"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -30,13 +31,23 @@ func NewTenantService(repo *store.TenantRepository) *TenantService {
 	}
 }
 
-// Update TenantService to integrate provisioning
 func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTenantRequest) (*tenantpb.CreateTenantResponse, error) {
 	if err := validateCreateTenantRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	existingTenant, err := s.repo.GetBySubdomain(ctx, req.Subdomain)
+	// Extract tenant subdomain from metadata
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "missing metadata")
+	}
+	subdomains := md.Get("x-tenant-subdomain")
+	if len(subdomains) == 0 || subdomains[0] == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing X-Tenant-Subdomain header")
+	}
+	subdomain := subdomains[0]
+
+	existingTenant, err := s.repo.GetBySubdomain(ctx, subdomain)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check subdomain uniqueness")
 		return nil, status.Error(codes.Internal, "Internal server error")
@@ -47,7 +58,7 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 
 	tenant := &model.Tenant{
 		Name:      req.Name,
-		Subdomain: req.Subdomain,
+		Subdomain: subdomain,
 		Status:    "provisioning",
 	}
 	if err := s.repo.Create(ctx, tenant); err != nil {
@@ -55,7 +66,6 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 		return nil, status.Error(codes.Internal, "Failed to create tenant")
 	}
 
-	// Queue for provisioning
 	if s.provisioningService != nil {
 		s.provisioningService.QueueForProvisioning(tenant)
 	}
