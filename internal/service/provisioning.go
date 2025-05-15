@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/teresa-solution/tenant-management-service/internal/model"
+	"github.com/teresa-solution/tenant-management-service/internal/monitoring"
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 )
 
@@ -38,35 +38,77 @@ func (ps *ProvisioningService) startProvisioningWorker() {
 
 // provisionTenant simulates the provisioning process
 func (ps *ProvisioningService) provisionTenant(tenant *model.Tenant) error {
+	startTime := time.Now()
 	ctx := context.Background()
 
-	// Log provisioning start
+	log.Info().
+		Str("tenant_id", tenant.ID.String()).
+		Str("subdomain", tenant.Subdomain).
+		Msg("Starting provisioning process")
+
 	if err := ps.repo.CreateProvisioningLog(ctx, tenant.ID, "init", "pending", nil); err != nil {
+		log.Error().
+			Str("tenant_id", tenant.ID.String()).
+			Err(err).
+			Msg("Failed to create provisioning log")
 		return err
 	}
 
-	// Simulate provisioning steps (e.g., database setup, DNS registration)
-	time.Sleep(2 * time.Second) // Simulate external system call
+	time.Sleep(2 * time.Second)
 	if err := ps.repo.CreateProvisioningLog(ctx, tenant.ID, "db_setup", "in_progress", map[string]interface{}{"host": "db.example.com"}); err != nil {
+		log.Error().
+			Str("tenant_id", tenant.ID.String()).
+			Err(err).
+			Msg("Failed to log db_setup step")
 		return err
 	}
 
-	// Simulate success or failure
-	if time.Now().UnixNano()%2 == 0 { // Random success/failure for demo
+	var provisioningStatus string
+	if time.Now().UnixNano()%2 == 0 {
 		if err := ps.repo.CreateProvisioningLog(ctx, tenant.ID, "db_setup", "success", nil); err != nil {
+			log.Error().
+				Str("tenant_id", tenant.ID.String()).
+				Err(err).
+				Msg("Failed to log db_setup success")
 			return err
 		}
 		tenant.Status = "active"
 		tenant.Provisioned = true
+		provisioningStatus = "success"
+		log.Info().
+			Str("tenant_id", tenant.ID.String()).
+			Msg("Provisioning completed successfully")
 	} else {
 		if err := ps.repo.CreateProvisioningLog(ctx, tenant.ID, "db_setup", "failed", map[string]interface{}{"error": "timeout"}); err != nil {
+			log.Error().
+				Str("tenant_id", tenant.ID.String()).
+				Err(err).
+				Msg("Failed to log db_setup failure")
 			return err
 		}
 		tenant.Status = "error"
-		return errors.New("provisioning failed")
+		provisioningStatus = "failed"
+		log.Warn().
+			Str("tenant_id", tenant.ID.String()).
+			Msg("Provisioning failed due to timeout")
+
+		monitoring.MockAlert("Tenant provisioning failed", map[string]string{
+			"tenant_id": tenant.ID.String(),
+			"subdomain": tenant.Subdomain,
+			"error":     "timeout",
+		})
 	}
 
+	// Use the exported metrics from the monitoring package
+	monitoring.TenantsProvisioned.WithLabelValues(provisioningStatus).Inc()
+	duration := time.Since(startTime).Seconds()
+	monitoring.ProvisioningDuration.Observe(duration)
+
 	if err := ps.repo.Update(ctx, tenant); err != nil {
+		log.Error().
+			Str("tenant_id", tenant.ID.String()).
+			Err(err).
+			Msg("Failed to update tenant status after provisioning")
 		return err
 	}
 
