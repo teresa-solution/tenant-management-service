@@ -3,11 +3,14 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+
+	_ "github.com/lib/pq"
 	"github.com/teresa-solution/tenant-management-service/internal/model"
 )
 
@@ -130,4 +133,14 @@ func (r *TenantRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+func (r *TenantRepository) CreateProvisioningLog(ctx context.Context, tenantID uuid.UUID, step, status string, details interface{}) error {
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		return err
+	}
+
+	query := `INSERT INTO tenant_provisioning_logs (tenant_id, step, status, details, created_at) VALUES ($1, $2, $3, $4, $5)`
+	_, err = r.db.ExecContext(ctx, query, tenantID, step, status, detailsJSON, time.Now())
+	return err
 }
