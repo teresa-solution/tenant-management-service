@@ -16,25 +16,26 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TenantService handles tenant-related business logic
+// Update TenantService constructor to include ProvisioningService
 type TenantService struct {
-	repo *store.TenantRepository
+	repo                *store.TenantRepository
+	provisioningService *ProvisioningService
 	tenantpb.UnimplementedTenantServiceServer
 }
 
-// NewTenantService creates a new TenantService
 func NewTenantService(repo *store.TenantRepository) *TenantService {
-	return &TenantService{repo: repo}
+	return &TenantService{
+		repo:                repo,
+		provisioningService: NewProvisioningService(repo),
+	}
 }
 
-// CreateTenant creates a new tenant
+// Update TenantService to integrate provisioning
 func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTenantRequest) (*tenantpb.CreateTenantResponse, error) {
-	// Validate request
 	if err := validateCreateTenantRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Check if subdomain is unique
 	existingTenant, err := s.repo.GetBySubdomain(ctx, req.Subdomain)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check subdomain uniqueness")
@@ -44,7 +45,6 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 		return nil, status.Error(codes.AlreadyExists, "Subdomain already exists")
 	}
 
-	// Create tenant
 	tenant := &model.Tenant{
 		Name:      req.Name,
 		Subdomain: req.Subdomain,
@@ -55,14 +55,18 @@ func (s *TenantService) CreateTenant(ctx context.Context, req *tenantpb.CreateTe
 		return nil, status.Error(codes.Internal, "Failed to create tenant")
 	}
 
-	// Convert to gRPC response
+	// Queue for provisioning
+	if s.provisioningService != nil {
+		s.provisioningService.QueueForProvisioning(tenant)
+	}
+
 	respTenant := &tenantpb.Tenant{
 		Id:        tenant.ID.String(),
 		Name:      tenant.Name,
 		Subdomain: tenant.Subdomain,
 		Status:    tenant.Status,
-		CreatedAt: tenant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: tenant.UpdatedAt.Format(time.RFC3339),
+		CreatedAt: tenant.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: tenant.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	return &tenantpb.CreateTenantResponse{Tenant: respTenant}, nil
 }
