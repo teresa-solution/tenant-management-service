@@ -29,20 +29,20 @@ func (r *TenantRepository) Close() error {
 }
 
 func (r *TenantRepository) Create(ctx context.Context, tenant *model.Tenant) error {
-	query := `INSERT INTO tenants (id, name, subdomain, status, provisioned, created_at, updated_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	query := `INSERT INTO tenants (id, name, subdomain, encrypted_email, email_iv, status, provisioned, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	tenant.ID = uuid.New()
 	tenant.CreatedAt = time.Now()
 	tenant.UpdatedAt = tenant.CreatedAt
-	_, err := r.db.ExecContext(ctx, query, tenant.ID, tenant.Name, tenant.Subdomain, tenant.Status, tenant.Provisioned, tenant.CreatedAt, tenant.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, query, tenant.ID, tenant.Name, tenant.Subdomain, tenant.EncryptedEmail, tenant.EmailIV, tenant.Status, tenant.Provisioned, tenant.CreatedAt, tenant.UpdatedAt)
 	return err
 }
 
 func (r *TenantRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Tenant, error) {
-	query := `SELECT id, name, subdomain, status, provisioned, created_at, updated_at, deleted_at
+	query := `SELECT id, name, subdomain, encrypted_email, email_iv, status, provisioned, created_at, updated_at, deleted_at
               FROM tenants WHERE id = $1`
 	tenant := &model.Tenant{}
-	err := r.db.QueryRowContext(ctx, query, id).Scan(&tenant.ID, &tenant.Name, &tenant.Subdomain, &tenant.Status, &tenant.Provisioned, &tenant.CreatedAt, &tenant.UpdatedAt, &tenant.DeletedAt)
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&tenant.ID, &tenant.Name, &tenant.Subdomain, &tenant.EncryptedEmail, &tenant.EmailIV, &tenant.Status, &tenant.Provisioned, &tenant.CreatedAt, &tenant.UpdatedAt, &tenant.DeletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -50,18 +50,18 @@ func (r *TenantRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Te
 }
 
 func (r *TenantRepository) Update(ctx context.Context, tenant *model.Tenant) error {
-	query := `UPDATE tenants SET name = $2, subdomain = $3, status = $4, provisioned = $5, updated_at = $6
+	query := `UPDATE tenants SET name = $2, subdomain = $3, encrypted_email = $4, email_iv = $5, status = $6, provisioned = $7, updated_at = $8
               WHERE id = $1`
 	tenant.UpdatedAt = time.Now()
-	_, err := r.db.ExecContext(ctx, query, tenant.ID, tenant.Name, tenant.Subdomain, tenant.Status, tenant.Provisioned, tenant.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, query, tenant.ID, tenant.Name, tenant.Subdomain, tenant.EncryptedEmail, tenant.EmailIV, tenant.Status, tenant.Provisioned, tenant.UpdatedAt)
 	return err
 }
 
 func (r *TenantRepository) GetBySubdomain(ctx context.Context, subdomain string) (*model.Tenant, error) {
-	query := `SELECT id, name, subdomain, status, provisioned, created_at, updated_at, deleted_at
+	query := `SELECT id, name, subdomain, encrypted_email, email_iv, status, provisioned, created_at, updated_at, deleted_at
               FROM tenants WHERE subdomain = $1`
 	tenant := &model.Tenant{}
-	err := r.db.QueryRowContext(ctx, query, subdomain).Scan(&tenant.ID, &tenant.Name, &tenant.Subdomain, &tenant.Status, &tenant.Provisioned, &tenant.CreatedAt, &tenant.UpdatedAt, &tenant.DeletedAt)
+	err := r.db.QueryRowContext(ctx, query, subdomain).Scan(&tenant.ID, &tenant.Name, &tenant.Subdomain, &tenant.EncryptedEmail, &tenant.EmailIV, &tenant.Status, &tenant.Provisioned, &tenant.CreatedAt, &tenant.UpdatedAt, &tenant.DeletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

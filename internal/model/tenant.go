@@ -8,14 +8,17 @@ import (
 
 // Tenant represents the tenants table
 type Tenant struct {
-	ID          uuid.UUID  `json:"id"`
-	Name        string     `json:"name"`
-	Subdomain   string     `json:"subdomain"`
-	Status      string     `json:"status"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
-	Provisioned bool       `db:"provisioned"` // New field
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	Subdomain      string     `json:"subdomain"`
+	ContactEmail   string     // Plaintext (transient, not stored in DB)
+	EncryptedEmail []byte     // Stored in DB
+	EmailIV        []byte     // Stored in DB
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+	Provisioned    bool       `db:"provisioned"` // New field
 }
 
 // TenantContact represents the tenant_contacts table
