@@ -21,7 +21,7 @@ import (
 // Update TenantService constructor to include ProvisioningService
 type TenantService struct {
 	repo                *store.TenantRepository
-	provisioningService *ProvisioningService
+	provisioningService ProvisioningServiceInterface
 	tenantpb.UnimplementedTenantServiceServer
 }
 

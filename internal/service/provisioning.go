@@ -10,6 +10,13 @@ import (
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 )
 
+// ProvisioningServiceInterface defines the methods required for provisioning
+type ProvisioningServiceInterface interface {
+	QueueForProvisioning(tenant *model.Tenant)
+}
+
+
+
 // ProvisioningService handles tenant provisioning workflows
 type ProvisioningService struct {
 	repo         *store.TenantRepository
