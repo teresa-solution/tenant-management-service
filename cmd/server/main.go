@@ -9,14 +9,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp" // Add this import
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/teresa-solution/tenant-management-service/internal/monitoring" // Add this import
+	"github.com/teresa-solution/tenant-management-service/internal/monitoring"
 	"github.com/teresa-solution/tenant-management-service/internal/service"
 	"github.com/teresa-solution/tenant-management-service/internal/store"
 	tenantpb "github.com/teresa-solution/tenant-management-service/proto/gen"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -50,39 +51,47 @@ func main() {
 
 	log.Info().Msgf("Starting Tenant Management Service on port %d", *port)
 
+	// Load TLS credentials for gRPC
+	certFile := "certs/cert.pem"
+	keyFile := "certs/key.pem"
+	creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load TLS credentials")
+	}
+
+	// Create gRPC server with TLS
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to listen")
 	}
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.Creds(creds))
 	tenantpb.RegisterTenantServiceServer(server, tenantService)
 	reflection.Register(server)
 
 	go func() {
-		log.Info().Msgf("gRPC server listening at %v", lis.Addr())
+		log.Info().Msgf("gRPC server listening at %v with TLS", lis.Addr())
 		if err := server.Serve(lis); err != nil {
 			log.Fatal().Err(err).Msg("Failed to start gRPC server")
 		}
 	}()
 
-	// Update HTTP server to include /metrics endpoint
-	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
-		})
-		mux.Handle("/metrics", promhttp.Handler()) // Add metrics endpoint
+	// Update HTTP server to use HTTPS for metrics and health
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	mux.Handle("/metrics", promhttp.Handler())
 
+	go func() {
 		httpServer := &http.Server{
 			Addr:    ":8081",
 			Handler: mux,
 		}
-
-		log.Info().Msg("HTTP server for health checks and metrics started on port 8081")
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error().Err(err).Msg("HTTP server error")
+		log.Info().Msg("HTTPS server for health checks and metrics started on port 8081")
+		if err := httpServer.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			log.Error().Err(err).Msg("HTTPS server error")
 		}
 	}()
 
